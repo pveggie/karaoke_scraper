@@ -1,4 +1,5 @@
 require 'awesome_print'
+require 'csv'
 
 class KaraokeScraper
   require 'open-uri'
@@ -28,14 +29,25 @@ class KaraokeScraper
   end
 
   def get_all_songs
-    change_date_range_to_all
-    scrape_all_pages("English")
+    puts "This will take a while."
+    LANGUAGES.each do |language|
+      puts "Collecting songs for #{language[:name]}"
+      set_language(language[:value])
+      YEARS.each do |year|
+        puts "#{language[:name]} - added in #{year}"
+        set_year(year)
+        set_date_range_to_all
+        scrape_all_pages(language[:name])
+      end
+      puts "#{language[:name]} finished."
+    end
   end
 
   def scrape_all_pages(language)
     page_number = 1
 
     loop do
+      puts "Page #{page_number}"
       scrape_song_list_from_page(language)
       break if @page.search('#new_list_arrow_r form').empty?
       next_page(page_number += 1)
@@ -45,9 +57,9 @@ class KaraokeScraper
   def scrape_song_list_from_page(language)
     @page.search('tr').each do |row|
       next if row.search('td').count == 0
-      song = row.search('td')[0].text
+      title = row.search('td')[0].text
       artist = row.search('td')[1].text
-      @songs << { song: song, artist: artist, language: language}
+      @songs << { title: title, artist: artist, language: language }
     end
   end
 
@@ -57,24 +69,38 @@ class KaraokeScraper
    @page = @agent.submit(form, form.buttons.first)
   end
 
-  def change_date_range_to_all
+  def set_language(language_value)
+    form = @page.forms.first
+    form.song_lang = language_value
+    @page = @agent.submit(form, form.buttons.first)
+  end
+
+  def set_year(year)
+    form = @page.forms.first
+    form.year = year
+    @page = @agent.submit(form, form.buttons.first)
+  end
+
+  def set_date_range_to_all
     form = @page.forms.first
     form.date = DATE_SELECTION[:date_setting]
     @page = @agent.submit(form, form.buttons.first)
   end
-
-  # def test
-  #   scrape_song_list_from_page("English")
-  #   next_page(2)
-  #   scrape_song_list_from_page("English")
-  #   ap songs
-  # end
 end
+
 scraper = KaraokeScraper.new
-# scraper.scrape_song_list_from_page
 scraper.get_all_songs
-# scraper.test
-ap scraper.songs
-# 'All Songs'
-# '#sel_lang', '#sel_date', '#sel_year', '#new_select_submit'
-# '#new_list_arrow_r'
+puts "Songs collected. Writing to csv file"
+
+CSV.open(
+  "song_list.csv",
+  "wb",
+  write_headers: true,
+  headers: ["Title", "Artist", "Language"]
+  ) do |csv|
+  scraper.songs.each do |song|
+    csv << [song[:title], song[:artist], song[:language]]
+  end
+end
+
+puts "Finished. Check 'song_list.csv' to see the songs."
