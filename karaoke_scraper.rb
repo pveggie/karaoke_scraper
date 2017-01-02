@@ -1,6 +1,3 @@
-require 'awesome_print'
-require 'csv'
-
 class KaraokeScraper
   require 'open-uri'
   require 'nokogiri'
@@ -21,7 +18,6 @@ class KaraokeScraper
   DATE_SELECTION = { name: "All Songs", date_setting: "0000-00-00" }
   URL = "https://microsite.nintendo-europe.com/wiikaraokeudata/?locale=en"
 
-
   def initialize
     @songs = []
     @agent = Mechanize.new
@@ -32,16 +28,16 @@ class KaraokeScraper
     puts "This will take a while."
     LANGUAGES.each do |language|
       puts "Collecting songs for #{language[:name]}"
-      set_language(language[:value])
       YEARS.each do |year|
         puts "#{language[:name]} - added in #{year}"
-        set_year(year)
-        set_date_range_to_all
+        set_year_date_and_language(year, language[:value])
         scrape_all_pages(language[:name])
       end
       puts "#{language[:name]} finished."
     end
   end
+
+  private
 
   def scrape_all_pages(language)
     page_number = 1
@@ -52,6 +48,14 @@ class KaraokeScraper
       break if @page.search('#new_list_arrow_r form').empty?
       next_page(page_number += 1)
     end
+  end
+
+  def set_year_date_and_language(year, language_value)
+    form = @page.forms.first
+    form.date = DATE_SELECTION[:date_setting]
+    form.year = year
+    form.song_lang = language_value
+    @page = @agent.submit(form, form.buttons.first)
   end
 
   def scrape_song_list_from_page(language)
@@ -65,26 +69,9 @@ class KaraokeScraper
 
   def next_page(page_number)
    form = @page.forms.last
+   puts "Form data: #{form.year} - #{form.date} - #{form.song_lang}"
    form.fields[-1].value = page_number
    @page = @agent.submit(form, form.buttons.first)
-  end
-
-  def set_language(language_value)
-    form = @page.forms.first
-    form.song_lang = language_value
-    @page = @agent.submit(form, form.buttons.first)
-  end
-
-  def set_year(year)
-    form = @page.forms.first
-    form.year = year
-    @page = @agent.submit(form, form.buttons.first)
-  end
-
-  def set_date_range_to_all
-    form = @page.forms.first
-    form.date = DATE_SELECTION[:date_setting]
-    @page = @agent.submit(form, form.buttons.first)
   end
 end
 
@@ -92,11 +79,14 @@ scraper = KaraokeScraper.new
 scraper.get_all_songs
 puts "Songs collected. Writing to csv file"
 
+require 'csv'
+
 CSV.open(
   "song_list.csv",
   "wb",
   write_headers: true,
-  headers: ["Title", "Artist", "Language"]
+  headers: ["Title", "Artist", "Language"],
+  col_sep: ";"
   ) do |csv|
   scraper.songs.each do |song|
     csv << [song[:title], song[:artist], song[:language]]
